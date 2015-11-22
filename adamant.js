@@ -46,15 +46,6 @@ const ALPHAMASK = 0xFF000000
 var CHARCODE_LOOKUP = {}
 
 /**
-* Look up table for converting characters to their charcodes without a function
-* call.
-*
-* @property CHARCODE_LOOKUP
-* @type Object
-*/
-var CHARCODE_LOOKUP = {}
-
-/**
 * Look up table for converting charcodes to their characters without a function
 * call.
 *
