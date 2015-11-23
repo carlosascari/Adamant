@@ -9,6 +9,38 @@ var Adamant = {}
 // -----------------------------------------------------------------------------
 
 /**
+* Huffman Tree Node
+*
+* @property NODE_LEAF
+* @type Number
+* @final
+*/
+const NODE_LEAF = 0x01
+
+/**
+* Huffman Tree.
+*
+* @property NODE_TREE
+* @type Number
+* @final
+*/
+const NODE_TREE = 0x02
+
+/**
+* @property BIT_ZERO
+* @type Number
+* @final
+*/
+const BIT_ZERO = 0x0
+
+/**
+* @property BIT_ONE
+* @type Number
+* @final
+*/
+const BIT_ONE = 0x1
+
+/**
 * @property REDMASK
 * @type Number
 * @final
@@ -125,16 +157,16 @@ function histogram(text)
 }
 
 /**
+* Uses a histogram to build huffman code for each charcode.
 * 
-* 
+* **Note** Each element is an array: `[<charcode>, <Array code>]`
+*
+* @method prefix_code 
+* @param histogram {Array}
+* @return Array
 */
 function prefix_code (histogram) 
 {
-	const NODE_LEAF = 0x01
-	const NODE_TREE = 0x02
-	const BIT_ZERO = 0x0
-	const BIT_ONE = 0x1
-
 	var histogram = histogram.slice(0)
 	var prefix_code = {}
 
