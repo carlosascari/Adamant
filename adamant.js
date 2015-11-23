@@ -4,7 +4,7 @@
 * @module Adamant
 */
 var Adamant = (function () {
-var Adamant = {}
+var Adamant = new (function Adamant(){})
 
 // -----------------------------------------------------------------------------
 
@@ -95,23 +95,9 @@ for (var i = 0; i < 0xFF; i++)
 
 // -----------------------------------------------------------------------------
 
-/**
-* Hash of JS keywords, common patterns, in order to improve compression
-*
-* @property JS_DICT
-* @type Object
-* @final
-*/
-var JS_DICT = [
-	'this', 'function', 'if', 'return', 'var', 'else',
-	'for', 'new', 'typeof', 'while', 'case', 'break',
-	'do', 'in', 'try', 'enum', 'null', 'true', 'void', 
-	'with', 'catch', 'class', 'const', 'false', 'super', 
-	'throw', 'delete', 'export', 'import', 'switch', 
-	'default', 'extends', 'finally', 'continue', 'debugger',
-	'0;', '/*', '**', '*/', '//', '++', '--', '()', '  ', '[]',
-	'setTimeout', 'setInterval', 'toString'
-]
+function f_sort_histogram_desc(a, b){return b[1] - a[1]}
+function f_sort_dictionary_by_length_desc(a, b){return b.length - a.length}
+function f_filter_unique_words(v, i, o){return v !== o[i-1] && v.length > 1}
 
 // -----------------------------------------------------------------------------
 
@@ -142,7 +128,7 @@ function histogram(text)
 		histogram[histogram.length] = [charcode, freq_hash[charcode]]
 	}
 
-	histogram.sort(function sortFunction(a, b){return b[1] - a[1]})
+	histogram.sort(f_sort_histogram_desc)
 
 	return histogram
 }
@@ -225,6 +211,71 @@ function prefix_code (histogram)
 	return histogram
 }
 
+/**
+* @method escape_regexp
+* @param string {String}
+* @return String
+*/
+function escape_regexp(string)
+{
+	return string.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')
+}
+
+/**
+* @method dictionary_coder
+* @param text {String}
+* @param [offset] {Number}
+* @return Object
+*/
+function dictionary_coder(text, offset, max)
+{
+	var dictionary = {}, offset = offset >>> 0, max = max >>> 0 || 0xFF
+
+	var unique_patterns = extract_unique_patterns(text)
+
+	unique_patterns
+	.sort(f_sort_dictionary_by_length_desc)
+
+	for (var i = 0, l = unique_patterns.length; i < max; i++) 
+	{
+		var pattern = unique_patterns[i]
+		var charcode = offset | i
+		dictionary[pattern] = charcode
+	}
+
+	return dictionary
+}
+
+/**
+* @method extract_unique_patterns
+* @param text {String}
+* @return Array
+*/
+function extract_unique_patterns(text)
+{
+	var words = text.split(/\s+/).sort()
+	var unique_words = words.filter(f_filter_unique_words)
+	var nonwords = text.split(/[^\s]+/).sort()
+	var unique_nonwords = nonwords.filter(f_filter_unique_words)
+	unique_words.push.apply(unique_words, unique_nonwords)
+	return unique_words
+}
+
+/**
+* Removes c-style comments from a given string.
+*
+* @method remove_comments
+* @param text {String}
+* @return String
+*/
+function remove_comments(text)
+{
+	return text.replace(
+		/(\/\*([^*]|[\r\n]|(\*+([^*\/]|[\r\n])))*\*+\/)|(\/{2}.*)/g, 
+		''
+	)
+}
+
 // -----------------------------------------------------------------------------
 
 function spiral(){}
@@ -233,7 +284,12 @@ function spiral(){}
 
 Adamant.spiral = function Adamant__spiral()
 {
-	spiral.apply(spiral, arguments)
+	return spiral.apply(spiral, arguments)
+}
+
+Adamant.dictionary_coder = function Adamant__dictionary_coder()
+{
+	return dictionary_coder.apply(dictionary_coder, arguments)
 }
 
 // -----------------------------------------------------------------------------
