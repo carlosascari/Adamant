@@ -69,6 +69,21 @@ const BLUEMASK = 0x00FF0000
 const ALPHAMASK = 0xFF000000
 
 /**
+* @property CANVAS
+* @type Object
+*/
+var CANVAS = document.createElement('canvas')
+
+/**
+* @property CONTEXT
+* @type Object
+*/
+var CONTEXT = CANVAS.getContext('2d')
+CONTEXT.webkitImageSmoothingEnabled = false
+CONTEXT.mozImageSmoothingEnabled = false
+CONTEXT.imageSmoothingEnabled = false
+
+/**
 * Look up table for converting characters to their charcodes without a function
 * call.
 *
@@ -208,7 +223,7 @@ function prefix_code (histogram)
 	// Begin.
 	traverse(forest[0], [])
 
-	return histogram
+	return prefix_code
 }
 
 /**
@@ -276,15 +291,195 @@ function remove_comments(text)
 	)
 }
 
-// -----------------------------------------------------------------------------
-
-function spiral(){}
-
-// -----------------------------------------------------------------------------
-
-Adamant.spiral = function Adamant__spiral()
+/**
+* Converts an Array of zeros and ones into an array of 
+* 32bit numbers.
+*
+* @method convert_bitarray_to_pixelarray
+* @param bitarray {Array}
+* @return Array 
+*/
+function convert_bitarray_to_pixelarray(bitarray)
 {
-	return spiral.apply(spiral, arguments)
+	var pixelarray = [0], pixel_index = -1
+	for (var x = 0, l = bitarray.length; x < l; x++) 
+	{
+		var bit_index = x % 32
+		if (!bit_index) pixel_index++
+		pixelarray[pixel_index] |= bitarray[x] << 31 - bit_index
+	}
+	return pixelarray
+}
+
+// -----------------------------------------------------------------------------
+
+/**
+* @method read
+* @param image_data {ImageData}
+*/
+function read(image_data)
+{	
+	console.dir(image_data)
+	var w = image_data.width
+	var h = w
+	var a = w * h
+	var dx = 0
+	var dy = -1
+	var ox = ~~(w/2) - 1
+	var oy = ~~(h/2) - 1
+	var x = 0
+	var y = 0
+	var i = 0 
+	var pixelview = new Uint32Array(image_data.data.buffer)
+
+	console.log(pixelview[((oy + y) * w) + (ox + x) ], oy +y, ox + x)
+	// ((oy + y) * w) + (ox + x)
+
+}
+
+/**
+* @method init
+* @param image {ImageElement}
+*/
+function init(image)
+{
+	CANVAS.width = image.width, CANVAS.height = image.height
+	CONTEXT.drawImage(image, 0, 0)
+	var image_data = CONTEXT.getImageData(0,0, image.width, image.height)
+
+	console.log('read', Adamant.read(image_data))
+
+	
+	CANVAS.style.border = '1px solid black'
+	document.body.appendChild(CANVAS)
+}
+
+// -----------------------------------------------------------------------------
+
+/**
+* Writes the contents of a bitarray into a new ImageData instance
+*
+* @method write
+* @param bitarray {Array}
+* @return ImageData
+*/
+function write(bitarray)
+{
+	var pixelarray = convert_bitarray_to_pixelarray(bitarray)
+	var n = pixelarray.length + 4 
+	var w = Math.round(Math.sqrt(n))
+	var h = w
+	var a = w * h
+	var dx = 0
+	var dy = -1
+	var ox = ~~(w/2) - 1
+	var oy = ~~(h/2) - 1
+	var x = 0
+	var y = 0
+	var i = 0 
+	var image_data = CONTEXT.createImageData(w, h)
+	var pixelview = new Uint32Array(image_data.data.buffer)
+
+	// Header
+	pixelarray.unshift(0x4144414D)
+	pixelarray.unshift(n << 24 | a << 16 | 0x00 << 8 | 0x00)
+	pixelarray.unshift(0x414E5400)
+	pixelarray.unshift(0x4144414D)
+
+	console.dir(pixelarray[0])
+	
+
+
+	// pixelarray.unshift(
+	// 	0x4144414D, 0x414E5400, 
+	// 	n << 24 | a << 16 | 0x00 << 8 | 0x00,
+	// 	0x4144414D
+	// )
+
+	// Tail
+	// pixelarray.push(0x4144414D, 0x414E5400)
+
+	while(i < n)
+	{
+		pixelview[((oy + y) * w) + (ox + x)] = pixelarray[i]
+
+		if (x === y || (x < 0 && x === -y) || (x > 0 && x === 1 - y))
+		{
+			var tmp = dx, dx = -dy, dy = tmp
+		}
+		x += dx, y += dy, i++
+	}
+
+	// DBG
+	// CANVAS.width = w, CANVAS.height = h
+	// CANVAS.style.border = '1px solid black'
+	// CONTEXT.putImageData(image_data, 0, 0)
+	// document.body.appendChild(CANVAS)
+	return image_data
+}
+
+/**
+* Converts a text into a huffman encoded bit array. A custom prefix_code object
+* can be used.
+*
+* @method encode
+* @param text {String}
+* @param [prefix_code] {Object}
+* @return Array
+*/
+function encode(text, prefix_code)
+{
+	var prefix_code = prefix_code && typeof prefix_code === 'object' 
+					? prefix_code 
+					: Adamant.prefix_code(Adamant.histogram(text))
+
+	var bitarray = []
+	for (var i = 0, l = text.length; i < l; i++)
+	{
+		var character = text[i]
+		var charcode = CHARCODE_LOOKUP[character] || (CHARCODE_LOOKUP[character] = character.charCodeAt(0))
+		var huffman_code = prefix_code[charcode]
+		bitarray.push.apply(bitarray, huffman_code)
+	}
+	return bitarray
+}
+
+// -----------------------------------------------------------------------------
+
+Adamant.init = function Adamant__init()
+{
+	var image = this instanceof HTMLImageElement
+		? this
+		: arguments[0] instanceof HTMLImageElement
+		? arguments[0]
+		: null
+
+	return init(image)
+}
+
+Adamant.read = function Adamant__read()
+{
+	return read.apply(read, arguments)
+}
+
+Adamant.write = function Adamant__write()
+{
+	return write.apply(write, arguments)
+}
+
+Adamant.histogram = function Adamant__histogram()
+{
+	return histogram.apply(histogram, arguments)
+}
+
+Adamant.prefix_code = function Adamant__prefix_code()
+{
+	return prefix_code.apply(prefix_code, arguments)
+}
+
+Adamant.encode = function Adamant__encode()
+{
+	return encode.apply(encode, arguments)
 }
 
 Adamant.dictionary_coder = function Adamant__dictionary_coder()
