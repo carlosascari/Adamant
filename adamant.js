@@ -79,8 +79,6 @@ var CANVAS = document.createElement('canvas')
 * @type Object
 */
 var CONTEXT = CANVAS.getContext('2d')
-CONTEXT.webkitImageSmoothingEnabled = false
-CONTEXT.mozImageSmoothingEnabled = false
 CONTEXT.imageSmoothingEnabled = false
 
 /**
@@ -113,6 +111,68 @@ for (var i = 0; i < 0xFF; i++)
 function f_sort_histogram_desc(a, b){return b[1] - a[1]}
 function f_sort_dictionary_by_length_desc(a, b){return b.length - a.length}
 function f_filter_unique_words(v, i, o){return v !== o[i-1] && v.length > 1}
+
+// -----------------------------------------------------------------------------
+
+/**
+* @method escape_regexp
+* @param string {String}
+* @return String
+*/
+function escape_regexp(string)
+{
+	return string.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')
+}
+
+/**
+* @method extract_unique_patterns
+* @param text {String}
+* @return Array
+*/
+function extract_unique_patterns(text)
+{
+	var words = text.split(/\s+/).sort()
+	var unique_words = words.filter(f_filter_unique_words)
+	var nonwords = text.split(/[^\s]+/).sort()
+	var unique_nonwords = nonwords.filter(f_filter_unique_words)
+	unique_words.push.apply(unique_words, unique_nonwords)
+	return unique_words
+}
+
+/**
+* Removes c-style comments from a given string.
+*
+* @method remove_comments
+* @param text {String}
+* @return String
+*/
+function remove_comments(text)
+{
+	return text.replace(
+		/(\/\*([^*]|[\r\n]|(\*+([^*\/]|[\r\n])))*\*+\/)|(\/{2}.*)/g, 
+		''
+	)
+}
+
+/**
+* Converts an Array of zeros and ones into an array of 
+* 32bit numbers.
+*
+* @method convert_bitarray_to_pixelarray
+* @param bitarray {Array}
+* @return Array 
+*/
+function convert_bitarray_to_pixelarray(bitarray)
+{
+	var pixelarray = [0], pixel_index = -1
+	for (var x = 0, l = bitarray.length; x < l; x++) 
+	{
+		var bit_index = x % 32
+		if (!bit_index) pixel_index++
+		pixelarray[pixel_index] |= bitarray[x] << 31 - bit_index
+	}
+	return pixelarray
+}
 
 // -----------------------------------------------------------------------------
 
@@ -227,16 +287,6 @@ function prefix_code (histogram)
 }
 
 /**
-* @method escape_regexp
-* @param string {String}
-* @return String
-*/
-function escape_regexp(string)
-{
-	return string.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')
-}
-
-/**
 * @method dictionary_coder
 * @param text {String}
 * @param [offset] {Number}
@@ -261,56 +311,6 @@ function dictionary_coder(text, offset, max)
 	return dictionary
 }
 
-/**
-* @method extract_unique_patterns
-* @param text {String}
-* @return Array
-*/
-function extract_unique_patterns(text)
-{
-	var words = text.split(/\s+/).sort()
-	var unique_words = words.filter(f_filter_unique_words)
-	var nonwords = text.split(/[^\s]+/).sort()
-	var unique_nonwords = nonwords.filter(f_filter_unique_words)
-	unique_words.push.apply(unique_words, unique_nonwords)
-	return unique_words
-}
-
-/**
-* Removes c-style comments from a given string.
-*
-* @method remove_comments
-* @param text {String}
-* @return String
-*/
-function remove_comments(text)
-{
-	return text.replace(
-		/(\/\*([^*]|[\r\n]|(\*+([^*\/]|[\r\n])))*\*+\/)|(\/{2}.*)/g, 
-		''
-	)
-}
-
-/**
-* Converts an Array of zeros and ones into an array of 
-* 32bit numbers.
-*
-* @method convert_bitarray_to_pixelarray
-* @param bitarray {Array}
-* @return Array 
-*/
-function convert_bitarray_to_pixelarray(bitarray)
-{
-	var pixelarray = [0], pixel_index = -1
-	for (var x = 0, l = bitarray.length; x < l; x++) 
-	{
-		var bit_index = x % 32
-		if (!bit_index) pixel_index++
-		pixelarray[pixel_index] |= bitarray[x] << 31 - bit_index
-	}
-	return pixelarray
-}
-
 // -----------------------------------------------------------------------------
 
 /**
@@ -332,7 +332,7 @@ function read(image_data)
 	var i = 0 
 	var pixelview = new Uint32Array(image_data.data.buffer)
 
-	console.log(pixelview[((oy + y) * w) + (ox + x) ], oy +y, ox + x)
+	// console.log(pixelview[((oy + y) * w) + (ox + x) ], oy +y, ox + x)
 	// ((oy + y) * w) + (ox + x)
 
 }
@@ -381,27 +381,26 @@ function write(bitarray)
 	var pixelview = new Uint32Array(image_data.data.buffer)
 
 	// Header
-	pixelarray.unshift(0x4144414D)
-	pixelarray.unshift(n << 24 | a << 16 | 0x00 << 8 | 0x00)
-	pixelarray.unshift(0x414E5400)
-	pixelarray.unshift(0x4144414D)
+	pixelarray.unshift(0xAAAAAA00)
+	pixelarray.unshift(0xAAAAAAAA)
+	pixelarray.unshift(0xAAAAAAAA)
+	pixelarray.unshift(0x33A10030)
 
-	console.dir(pixelarray[0])
+	console.log('n', n)
+	console.log('0', pixelarray[0])
+	console.log('1', pixelarray[1])
+	console.log('2', pixelarray[2])
+	console.log('3', pixelarray[3])
 	
-
-
-	// pixelarray.unshift(
-	// 	0x4144414D, 0x414E5400, 
-	// 	n << 24 | a << 16 | 0x00 << 8 | 0x00,
-	// 	0x4144414D
-	// )
-
-	// Tail
-	// pixelarray.push(0x4144414D, 0x414E5400)
-
 	while(i < n)
 	{
-		pixelview[((oy + y) * w) + (ox + x)] = pixelarray[i]
+		var index = ((oy + y) * w) + (ox + x)
+		pixelview[index] = pixelarray[i] >>> 0
+
+		if (i < 4)
+		{
+			console.log(index, x, y, pixelarray[i])
+		}
 
 		if (x === y || (x < 0 && x === -y) || (x > 0 && x === 1 - y))
 		{
@@ -487,6 +486,7 @@ Adamant.dictionary_coder = function Adamant__dictionary_coder()
 	return dictionary_coder.apply(dictionary_coder, arguments)
 }
 
+Adamant.convert_bitarray_to_pixelarray = convert_bitarray_to_pixelarray
 // -----------------------------------------------------------------------------
 
 return Adamant
