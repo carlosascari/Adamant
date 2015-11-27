@@ -11,18 +11,16 @@
 <body class="light">
 <div id="wrapper">
 	<div style="max-width: 960px; margin: auto;">
-		<!-- 
-			HEADER
-		 -->
-		<header id="main-header">
+		<!-- header -->
+		<header id="main-header" style="border-bottom: 1px solid #e5e5e5;">
 			<div class="max-width">
 				<hgroup>
-					<h1><a href="http://topcoat.io">Adamant</a></h1>
+					<h1><a href="javascript:;">Adamant</a></h1>
 					<p>Demo</p>
 				</hgroup>
 				<nav>
 					<ul>
-						<li class="selected"><a href="http://topcoat.io/topcoat">Demo</a></li>
+						<li class="selected"><a href="javascript:;">Demo</a></li>
 						<li><a id="download-btn" href="https://github.com/">Download</a></li>
 					</ul>
 				</nav>
@@ -31,16 +29,20 @@
 		</header>
 
 		<div style="text-align: center">
-
-			<div style="width: 400px; display: inline-block">
-				<header>
-					<h2>Encoder</h2>
-					<p>Drop a javascript file to convert it into an executable image file</p>
-				</header>
-				<div style="width:400px;">
-					<form action="/upload-target" class="dropzone"></form>
+			<!-- <div style="height: 320px; display: inline-block"> -->
+				<div class="card">
+					<header class="text-left">
+						<h2>Encoder</h2>
+						<p>Drop a javascript file to convert it into an executable image file</p>
+					</header>
+					<div style="width:400px; display: inline-block;  position:relative">
+						<form action="/upload-target" class="dropzone float-center"></form>
+					</div>
+					<div style="width:400px; display: inline-block; position:relative">
+						<form action="/upload-target" class="dropzone float-center"></form>
+					</div>
 				</div>
-			</div>
+			<!-- </div> -->
 
 			<div style="width: 400px; display: inline-block; min-height: 340px; vertical-align: top">
 				<header>

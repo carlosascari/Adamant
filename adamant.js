@@ -4,7 +4,55 @@
 * @module Adamant
 */
 var Adamant = (function () {
+
+/**
+* @class Adamant
+* @constructor
+*/
 var Adamant = new (function Adamant(){})
+
+/**
+* @class Toolbox
+* @constructor
+*/
+var Toolbox = new (function Toolbox(){})
+
+/**
+* @class AdamantModule
+* @constructor
+* @param js_string {String}
+* @param metadata {Object}
+*/
+function AdamantModule(js_string, metadata)
+{
+	Object.defineProperty(
+		this, 
+		'init', 
+		{
+			configurable: false, writable: false, enumerable: true,
+			value: new Function(js_string)
+		}
+	)
+
+	if (metadata && typeof metadata === 'object')
+	{
+		var keys = Object.keys(metadata)
+		for (var i = 0; i < keys.length; i++) 
+		{
+			var key = keys[i]
+			Object.defineProperty(
+				this, 
+				key, 
+				{
+					configurable: false, writable: false, enumerable: true,
+					value: metadata[key]
+				}
+			)
+		}
+	}
+}
+
+Adamant.toolbox = Toolbox
 
 // -----------------------------------------------------------------------------
 
@@ -69,6 +117,34 @@ const BLUEMASK = 0x00FF0000
 const ALPHAMASK = 0xFF000000
 
 /**
+* Event handler called everytime a new Adamant image is decoded
+*
+* @property ON_MODULE
+* @type Function
+*/
+var ON_MODULE = function(){}
+
+/**
+* Whether to automatically execute a decoded Adamant image when watch is active
+*
+* @property AUTO_EXECUTE
+* @type Boolean
+*/
+var AUTO_EXECUTE = true
+
+/**
+* Function called everytime a new Adamant image is decoded before emiting the 
+* module event and before storing the Adamant Module instance in `Adamant.modules`
+*
+* @property WATCH_PROCESSOR
+* @type Function 
+*/
+var WATCH_PROCESSOR = function onmodule (module, image_element) 
+{
+	if (AUTO_EXECUTE) module.init.apply(module, image_element)
+}
+
+/**
 * @property CANVAS
 * @type Object
 */
@@ -107,91 +183,29 @@ for (var i = 0; i < 0xFF; i++)
 
 // -----------------------------------------------------------------------------
 
-function f_sort_histogram_desc(a, b){return b[1] - a[1]}
-function f_sort_dictionary_by_length_desc(a, b){return b.length - a.length}
-function f_filter_unique_words(v, i, o){return v !== o[i-1] && v.length > 1}
-
-// -----------------------------------------------------------------------------
-
-/**
-* @method escape_regexp
-* @param string {String}
-* @return String
-*/
-function escape_regexp(string)
-{
-	return string.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')
-}
-
-/**
-* @method extract_unique_patterns
-* @param text {String}
-* @return Array
-*/
-function extract_unique_patterns(text)
-{
-	var words = text.split(/\s+/).sort()
-	var unique_words = words.filter(f_filter_unique_words)
-	var nonwords = text.split(/[^\s]+/).sort()
-	var unique_nonwords = nonwords.filter(f_filter_unique_words)
-	unique_words.push.apply(unique_words, unique_nonwords)
-	return unique_words
-}
-
-/**
-* Removes c-style comments from a given string.
-*
-* @method remove_comments
-* @param text {String}
-* @return String
-*/
-function remove_comments(text)
-{
-	return text.replace(
-		/(\/\*([^*]|[\r\n]|(\*+([^*\/]|[\r\n])))*\*+\/)|(\/{2}.*)/g, 
-		''
-	)
-}
-
-/**
-* Converts an Array of zeros and ones into an array of 
-* 32bit numbers.
-*
-* @method convert_bitarray_to_pixelarray
-* @param bitarray {Array}
-* @return Array 
-*/
-function convert_bitarray_to_pixelarray(bitarray)
-{
-	var pixelarray = [0], pixel_index = -1
-	for (var x = 0, l = bitarray.length; x < l; x++) 
-	{
-		var bit_index = x % 32
-		if (!bit_index) pixel_index++
-		pixelarray[pixel_index] |= bitarray[x] << 31 - bit_index
-	}
-	return pixelarray
-}
-
-// -----------------------------------------------------------------------------
-
 /**
 * Gathers the frequency of each character in a body of text, and sorts so most
 * frequent character codes are first.
 * 
-* **Note** Each element is an array: `[<charcode>, <frequency>]`
+* A histogram is a Array with each element an array with the following 2 elements:
+*
+*	charcode  - Number representation of a character
+*	frequency - Number of times the charcode occured in text
+* 
+* respectively.
 *
 * @method histogram 
 * @param text {String}
 * @return Array
 */
-function histogram(text)
+Toolbox.histogram = function Toolbox__histogram (text) 
 {
 	var freq_hash = {}, histogram = []
 	for (var i = 0, l = text.length; i < l; i++)
 	{
 		var character = text[i]
-		var charcode = CHARCODE_LOOKUP[character] || (CHARCODE_LOOKUP[character] = character.charCodeAt(0))
+		var charcode = CHARCODE_LOOKUP[character] 
+					|| (CHARCODE_LOOKUP[character] = character.charCodeAt(0))
 		freq_hash[charcode] = (freq_hash[charcode] >>> 0) + 1
 	}
 
@@ -210,13 +224,16 @@ function histogram(text)
 /**
 * Uses a histogram to build huffman code for each charcode.
 * 
-* **Note** Each element is an array: `[<charcode>, <Array code>]`
+* A prefix_code is a Hash/Object with each key as the charcode and its value
+* an Array of zeroes and ones representing huffman encoded bits
+* 
+* respectively.
 *
 * @method prefix_code 
 * @param histogram {Array}
 * @return Array
 */
-function prefix_code (histogram) 
+Toolbox.prefix_code = function Toolbox__prefix_code (histogram) 
 {
 	var histogram = histogram.slice(0)
 	var prefix_code = {}
@@ -286,207 +303,383 @@ function prefix_code (histogram)
 }
 
 /**
-* @method dictionary_coder
-* @param text {String}
-* @param [offset] {Number}
-* @return Object
-*/
-function dictionary_coder(text, offset, max)
-{
-	var dictionary = {}, offset = offset >>> 0, max = max >>> 0 || 0xFF
-
-	var unique_patterns = extract_unique_patterns(text)
-
-	unique_patterns
-	.sort(f_sort_dictionary_by_length_desc)
-
-	for (var i = 0, l = unique_patterns.length; i < max; i++) 
-	{
-		var pattern = unique_patterns[i]
-		var charcode = offset | i
-		dictionary[pattern] = charcode
-	}
-
-	return dictionary
-}
-
-// -----------------------------------------------------------------------------
-
-/**
-* @method read
-* @param image_data {ImageData}
-*/
-function read(image_data)
-{	
-	console.dir(image_data)
-	var w = image_data.width
-	var h = w
-	var a = w * h
-	var dx = 0
-	var dy = -1
-	var ox = ~~(w/2) - 1
-	var oy = ~~(h/2) - 1
-	var x = 0
-	var y = 0
-	var i = 0 
-	var pixelview = new Uint32Array(image_data.data.buffer)
-
-	// console.log(pixelview[((oy + y) * w) + (ox + x) ], oy +y, ox + x)
-	// ((oy + y) * w) + (ox + x)
-
-}
-
-/**
-* @method init
-* @param image {ImageElement}
-*/
-function init(image)
-{
-	CANVAS.width = image.width, CANVAS.height = image.height
-	CONTEXT.drawImage(image, 0, 0)
-	var image_data = CONTEXT.getImageData(0,0, image.width, image.height)
-
-	console.log('read', Adamant.read(image_data))
-
-	
-	CANVAS.style.border = '1px solid black'
-	document.body.appendChild(CANVAS)
-}
-
-// -----------------------------------------------------------------------------
-
-/**
-* Writes the contents of a bitarray into a new ImageData instance
-*
-* @method write
-* @param bitarray {Array}
-* @return ImageData
-*/
-function write(bitarray)
-{
-	var pixelarray = convert_bitarray_to_pixelarray(bitarray)
-	var n = pixelarray.length + 4 
-	var w = Math.round(Math.sqrt(n))
-	var h = w
-	var a = w * h
-	var dx = 0
-	var dy = -1
-	var ox = ~~(w/2) - 1
-	var oy = ~~(h/2) - 1
-	var x = 0
-	var y = 0
-	var i = 0 
-	var image_data = CONTEXT.createImageData(w, h)
-	var pixelview = new Uint32Array(image_data.data.buffer)
-
-	// Header
-	pixelarray.unshift(0xAAAAAA00)
-	pixelarray.unshift(0xAAAAAAAA)
-	pixelarray.unshift(0xAAAAAAAA)
-	pixelarray.unshift(0x33A10030)
-
-	console.log('n', n)
-	console.log('0', pixelarray[0])
-	console.log('1', pixelarray[1])
-	console.log('2', pixelarray[2])
-	console.log('3', pixelarray[3])
-	
-	while(i < n)
-	{
-		var index = ((oy + y) * w) + (ox + x)
-		pixelview[index] = pixelarray[i] >>> 0
-
-		if (i < 4)
-		{
-			console.log(index, x, y, pixelarray[i])
-		}
-
-		if (x === y || (x < 0 && x === -y) || (x > 0 && x === 1 - y))
-		{
-			var tmp = dx, dx = -dy, dy = tmp
-		}
-		x += dx, y += dy, i++
-	}
-
-	// DBG
-	// CANVAS.width = w, CANVAS.height = h
-	// CANVAS.style.border = '1px solid black'
-	// CONTEXT.putImageData(image_data, 0, 0)
-	// document.body.appendChild(CANVAS)
-	return image_data
-}
-
-/**
 * Converts a text into a huffman encoded bit array. A custom prefix_code object
-* can be used.
+* can be used, as well as a custom histogram.
 *
-* @method encode
+* @method huffman_bits
 * @param text {String}
 * @param [prefix_code] {Object}
+* @param [histogram] {Array}
 * @return Array
 */
-function encode(text, prefix_code)
+Toolbox.huffman_bits = function Toolbox__huffman_code (text, histogram, prefix_code) 
 {
-	var prefix_code = prefix_code && typeof prefix_code === 'object' 
-					? prefix_code 
-					: Adamant.prefix_code(Adamant.histogram(text))
-
+	var histogram = typeof histogram  === 'array' || Toolbox.histogram(text)
+	var prefix_code = prefix_code && typeof prefix_code  === 'object' || Toolbox.prefix_code(histogram)
 	var bitarray = []
 	for (var i = 0, l = text.length; i < l; i++)
 	{
 		var character = text[i]
 		var charcode = CHARCODE_LOOKUP[character] || (CHARCODE_LOOKUP[character] = character.charCodeAt(0))
-		var huffman_code = prefix_code[charcode]
-		bitarray.push.apply(bitarray, huffman_code)
+		var huffman_bits = prefix_code[charcode]
+		bitarray.push.apply(bitarray, huffman_bits)
 	}
 	return bitarray
 }
 
+/**
+* Removes c-style comments from a given string.
+*
+* @method remove_comments
+* @param text {String}
+* @return String
+*/
+Toolbox.remove_comments = function Toolbox__remove_comments(text)
+{
+	return text.replace(
+		/(\/\*([^*]|[\r\n]|(\*+([^*\/]|[\r\n])))*\*+\/)|(\/{2}.*)/g, 
+		''
+	)
+}
+
+/**
+* Converts a prefix_code object to a Array of bits with Adamants structure rules
+* so to allow decoding of Adamant javascript content on any image.
+*
+* @method prefix_code
+* @param prefix_code {Object}
+* @return Array
+*/
+Toolbox.prefix_code_to_bitarray = function Toolbox__prefix_code_to_bitarray(prefix_code)
+{
+	var bitarray = []
+	var charcodes = Object.keys(prefix_code)
+	for (var i = 0, l = charcodes.length; i < l; i++) 
+	{
+		var charcode = charcodes[i]
+		var huffman_bits = prefix_code[charcode]
+		bitarray.push.apply(bitarray, charcode_to_bitarray(charcode))
+		bitarray.push.apply(bitarray, bitsize_to_bitarray(huffman_bits.length))
+		bitarray.push.apply(bitarray, huffman_bits)
+	}
+	return bitarray
+}
+
+/**
+* 
+*
+* @method adamant_header
+* @param image_data {ImageData}
+* @return Object
+*/
+Toolbox.adamant_header = function Toolbox__adamant_header(image_data)
+{
+
+}
+
+/**
+* 
+*
+* @method adamant_metadata
+* @param image_data {ImageData}
+* @param [adamant_header] {Object}
+* @return Object
+*/
+Toolbox.adamant_metadata = function Toolbox__adamant_metadata(image_data, adamant_header)
+{
+
+}
+
 // -----------------------------------------------------------------------------
 
-Adamant.init = function Adamant__init()
+/**
+* Converts a charcode of up to 16 bits of size, into a Array of ones and zeroes
+*
+* @method charcode_to_bitarray
+* @param charcode {Number}
+* @return Array
+*/
+function charcode_to_bitarray (charcode) 
 {
-	var image = this instanceof HTMLImageElement
-		? this
-		: arguments[0] instanceof HTMLImageElement
-		? arguments[0]
-		: null
-
-	return init(image)
+	charcode = charcode >>> 0
+	return [
+		(charcode) & (BIT_ONE << 0xF) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0xE) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0xD) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0xC) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0xB) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0xA) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x9) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x8) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x7) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x6) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x5) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x4) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x3) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x2) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x1) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x0) ? BIT_ONE : BIT_ZERO,
+	]
 }
 
-Adamant.read = function Adamant__read()
+/**
+* Converts a size of up to 255, into an Array of ones and zeroes
+*
+* @method bitsize_to_bitarray
+* @param size {Number}
+* @return Array
+*/
+function bitsize_to_bitarray (size) 
 {
-	return read.apply(read, arguments)
+	charcode = charcode >>> 0
+	return [
+		(charcode) & (BIT_ONE << 0x7) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x6) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x5) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x4) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x3) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x2) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x1) ? BIT_ONE : BIT_ZERO,
+		(charcode) & (BIT_ONE << 0x0) ? BIT_ONE : BIT_ZERO,
+	]
 }
 
-Adamant.write = function Adamant__write()
+/**
+* @method image_element_to_image_data
+* @param image_element {HTMLImageElement}
+* @return ImageData
+*/
+function image_element_to_image_data (image_element) 
 {
-	return write.apply(write, arguments)
+	CANVAS.width = image_element.width, CANVAS.height = image_element.height
+	CONTEXT.drawImage(image_element, 0, 0)
+	var image_data = CONTEXT.getImageData(0,0, image_element.width, image_element.height)
+	return image_data
 }
 
-Adamant.histogram = function Adamant__histogram()
-{
-	return histogram.apply(histogram, arguments)
-}
-
-Adamant.prefix_code = function Adamant__prefix_code()
-{
-	return prefix_code.apply(prefix_code, arguments)
-}
-
-Adamant.encode = function Adamant__encode()
-{
-	return encode.apply(encode, arguments)
-}
-
-Adamant.dictionary_coder = function Adamant__dictionary_coder()
-{
-	return dictionary_coder.apply(dictionary_coder, arguments)
-}
-
-Adamant.convert_bitarray_to_pixelarray = convert_bitarray_to_pixelarray
 // -----------------------------------------------------------------------------
+
+/**
+* Event Handler called everytime a new Adamant image is decoded
+*
+* @event onmodule
+* @param module {AdamantModule}
+* @param image_element {HTMLImageElement}
+*/
+Object.defineProperty(
+	Adamant, 
+	'onmodule', 
+	{
+		configurable: false, writable: true, enumerable: true,
+		get: function()
+		{
+			return ON_MODULE
+		},
+		set: function(cb)
+		{
+			if (typeof cb === 'function')
+			{
+				ON_MODULE = cb
+			}
+			else if (!cb)
+			{
+				ON_MODULE = function NOP(){}
+			}
+		},
+	}
+)
+
+// -----------------------------------------------------------------------------
+
+/**
+* Watches a page for new images that are inserted into the DOM. The `Adamant Signature`
+* is searched, if found it MAY be executed, or passed to a custom callback depending on 
+* option provided.
+*
+* ### Option
+*
+* `option` by default is **true**
+*
+* If option is **true** then 
+* Watch entire page and autoexecute incoming Adamant images.
+*
+* If option is **false** then 
+* Watch entire page and only decode incoming Adamant images. Decoded Images, as module
+* instances will be stored in the `Adamant.modules` Array Getter Property 
+*
+* If typeof option is a **function** then
+* It will be called everytime a Adamant image is decoded. The first argument will be 
+* a `Adamant Module` instance. This allows you to execute modules based on your own 
+* critera with `module.init()`. The callback must return the module instance to store
+* the module in the `Adamant.modules` property. This callback is also called before
+* `Adamant.onmodule` and can serve as a preprocessor for said event handler.
+*
+* @method watch
+* @param option {Boolean|Function|Object}
+* @callback `onmodule (module, element){}`
+*/
+Adamant.watch = function Adamant__watch (option) 
+{
+	if (Adamant.watchref) return
+
+	var interval = 400
+	var processing = false
+	var auto_execute = false
+	var watch_processor = WATCH_PROCESSOR
+
+	// Resolve option
+	if (option === true)
+	{
+		auto_execute = true
+	}
+	else if (option === false)
+	{
+		auto_execute = false
+	}
+	else if (typeof option === 'function')
+	{
+		watch_processor = option
+	}
+	else if (option && typeof option === 'object')
+	{
+		if (typeof option.interval === 'number' && option.interval >= 0)
+		{
+			interval = option.interval
+		}
+		if (typeof option.auto_execute === 'boolean')
+		{
+			auto_execute = option.auto_execute
+		}
+		if (typeof option.onmodule === 'function')
+		{
+			watch_processor = onmodule
+		}
+	}
+
+	function is_image_tagged (image_element) 
+	{
+		return undefined !== image_element.__ADAMANT_MODULE__
+	}
+
+	function is_adamant_image (image_element) 
+	{
+		// var image_data = image_element_to_image_data(image_element)
+		return false
+	}
+
+	function initialize_adamant_image (adamant_image) 
+	{
+		var decoded_text = (adamant_image)
+		var module = {}
+		module.init = function () {eval(decoded_text)}
+
+		if (typeof watch_processor === onmodule)
+		{
+			onmodule(module, adamant_image)
+		}
+		else
+		{
+			watch_processor(module, adamant_image)
+		}
+	}
+
+	function heartbeat () 
+	{
+		if (processing) return
+		processing = true
+		var image_elements = document.getElementsByTagName('img')
+		for (var i = 0, l = image_elements.length; i < l; i++) 
+		{
+			image_element = image_elements[i]
+			is_image_tagged(image_element)
+			? 0
+			: is_adamant_image(image_element)
+			  ? initialize_adamant_image(image_element)
+			  : 0	
+		}
+		processing = false
+	}
+
+	Adamant.watchref = setInterval(heartbeat, interval)
+}
+
+/**
+* Stop watching page for new Adamant images to decode.
+*
+* @method unwatch
+*/
+Adamant.unwatch = function Adamant__unwatch()
+{
+	if (!Adamant.watchref) return
+	clearInterval(Adamant.watchref)
+	Adamant.watchref = null
+}
+
+/**
+* Encodes a string into a 24bit bitmap image in a data URI digest.
+*
+* @example
+*
+*	// Sample JS string
+* 	var JS_FILE_CONTENTS = 'console.log("executable images ftw!")'
+*
+*	// Create, show and execute Adamant image
+*	var image_element = document.createElement('img')
+*	image_element.onload = Adamant.init
+*	document.body.appendChild(image_element)
+*	image_element.src = Adamant.encode(JS_FILE_CONTENTS)
+*
+* @method encode
+* @param text {String}
+* @return String
+*/
+Adamant.encode = function Adamant__encode(text)
+{
+	var histogram = Toolbox.histogram(text)
+	var prefix_code = Toolbox.prefix_code(histogram)
+	var huffman_bits = Toolbox.huffman_bits(text, histogram, prefix_code)
+}
+
+/**
+* Decodes a Adamant encoded image back to its original string.
+*
+* @method decode
+* @param image {HTMLImageElement|ImageData}
+* @return String
+*/
+Adamant.decode = function Adamant__decode(image){}
+
+/**
+* Initializes an Adamant encoded image
+*
+* This method can be used as an image `onload` event handler so it is executed
+* upon being loaded.
+*
+* @example
+*
+*	<imgs src="calculator.js.bmp", onload="Adamant.init">
+*
+* @method init
+* @param image {HTMLImageElement|ImageData}
+*/
+Adamant.init = function Adamant__init(image)
+{
+	var image_data = this instanceof HTMLImageElement
+	? image_element_to_image_data(this)
+	: image instanceof HTMLImageElement
+		? image_element_to_image_data(image)
+		: image instanceof ImageData
+			? image
+			: null
+
+	if (!image_data)
+	{
+		throw new Error('Image must be a HTMLImageElement or ImageData instance')
+	}
+
+	var js_string = Adamant.decode(image_data)
+	var module = new AdamantModule(js_string)
+}
 
 return Adamant
-})();
+})()
