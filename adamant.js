@@ -79,7 +79,6 @@ var CANVAS = document.createElement('canvas')
 * @type Object
 */
 var CONTEXT = CANVAS.getContext('2d')
-CONTEXT.imageSmoothingEnabled = false
 
 /**
 * Look up table for converting characters to their charcodes without a function
