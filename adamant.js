@@ -25,6 +25,12 @@ var Toolbox = new (function Toolbox(){})
 */
 function AdamantModule(js_string, metadata)
 {
+	/**
+	* A dynamic method whose body is the javascript string encoded in 
+	* the Adamant image.
+	*
+	* @method init
+	*/
 	Object.defineProperty(
 		this, 
 		'init', 
@@ -34,6 +40,8 @@ function AdamantModule(js_string, metadata)
 		}
 	)
 
+	// The structure of the Adamant image is still in the kitchen, its
+	// properties will be supplied dynamically.
 	if (metadata && typeof metadata === 'object')
 	{
 		var keys = Object.keys(metadata)
@@ -57,7 +65,17 @@ Adamant.toolbox = Toolbox
 // -----------------------------------------------------------------------------
 
 /**
-* Huffman Tree Node
+* Adamant Image Signature. Each character is represented in ASCII bytes. The
+* Byte following the signature is always the format version.
+*
+* @property SIGNATURE
+* @type String
+* @final
+*/
+const SIGNATURE = 'ADA'
+
+/**
+* Huffman Tree Leaf node type
 *
 * @property NODE_LEAF
 * @type Number
@@ -66,7 +84,7 @@ Adamant.toolbox = Toolbox
 const NODE_LEAF = 0x01
 
 /**
-* Huffman Tree.
+* Huffman Tree node type
 *
 * @property NODE_TREE
 * @type Number
@@ -89,43 +107,16 @@ const BIT_ZERO = 0x0
 const BIT_ONE = 0x1
 
 /**
-* @property REDMASK
-* @type Number
-* @final
-*/
-const REDMASK = 0x000000FF
-
-/**
-* @property GREENMASK
-* @type Number
-* @final
-*/
-const GREENMASK = 0x0000FF00
-
-/**
-* @property BLUEMASK
-* @type Number
-* @final
-*/
-const BLUEMASK = 0x00FF0000
-
-/**
-* @property ALPHAMASK
-* @type Number
-* @final
-*/
-const ALPHAMASK = 0xFF000000
-
-/**
-* Event handler called everytime a new Adamant image is decoded
+* Event handler called everytime a new Adamant image is decoded.
 *
 * @property ON_MODULE
 * @type Function
 */
-var ON_MODULE = function(){}
+var ON_MODULE = function onmodule_default(){}
 
 /**
-* Whether to automatically execute a decoded Adamant image when watch is active
+* Whether to automatically execute a decoded Adamant image when **watch** is 
+* active.
 *
 * @property AUTO_EXECUTE
 * @type Boolean
@@ -139,7 +130,7 @@ var AUTO_EXECUTE = true
 * @property WATCH_PROCESSOR
 * @type Function 
 */
-var WATCH_PROCESSOR = function onmodule (module, image_element) 
+var WATCH_PROCESSOR = function watch_processor (module, image_element) 
 {
 	if (AUTO_EXECUTE) module.init.apply(module, image_element)
 }
@@ -181,6 +172,14 @@ for (var i = 0; i < 0xFF; i++)
 	CHARACTER_LOOKUP[i] = character
 }
 
+/**
+* @method sort_histogram_desc
+*/
+function sort_histogram_desc(a, b)
+{
+	return b[1] - a[1]
+}
+
 // -----------------------------------------------------------------------------
 
 /**
@@ -190,7 +189,7 @@ for (var i = 0; i < 0xFF; i++)
 * A histogram is a Array with each element an array with the following 2 elements:
 *
 *	charcode  - Number representation of a character
-*	frequency - Number of times the charcode occured in text
+*	frequency - Number of times the charcode occured in the given text
 * 
 * respectively.
 *
@@ -216,18 +215,16 @@ Toolbox.histogram = function Toolbox__histogram (text)
 		histogram[histogram.length] = [charcode, freq_hash[charcode]]
 	}
 
-	histogram.sort(f_sort_histogram_desc)
+	histogram.sort(sort_histogram_desc)
 
 	return histogram
 }
 
 /**
-* Uses a histogram to build huffman code for each charcode.
+* Uses a histogram to build huffman code (bits) for each charcode.
 * 
 * A prefix_code is a Hash/Object with each key as the charcode and its value
-* an Array of zeroes and ones representing huffman encoded bits
-* 
-* respectively.
+* an Array of zeroes and ones representing huffman encoded bits.
 *
 * @method prefix_code 
 * @param histogram {Array}
@@ -314,8 +311,12 @@ Toolbox.prefix_code = function Toolbox__prefix_code (histogram)
 */
 Toolbox.huffman_bits = function Toolbox__huffman_code (text, histogram, prefix_code) 
 {
-	var histogram = typeof histogram  === 'array' || Toolbox.histogram(text)
-	var prefix_code = prefix_code && typeof prefix_code  === 'object' || Toolbox.prefix_code(histogram)
+	if (!prefix_code || typeof prefix_code  !== 'object')
+	{
+		histogram = typeof histogram === 'array' ? histogram : Toolbox.histogram(text)
+		prefix_code = Toolbox.prefix_code(histogram)
+	}
+
 	var bitarray = []
 	for (var i = 0, l = text.length; i < l; i++)
 	{
@@ -346,6 +347,12 @@ Toolbox.remove_comments = function Toolbox__remove_comments(text)
 * Converts a prefix_code object to a Array of bits with Adamants structure rules
 * so to allow decoding of Adamant javascript content on any image.
 *
+* Structure of a prefix_code element:
+*	
+*	<charcode>  				16bit
+*	<bitarray>.length			 8bit
+*	<bitarray>					n-bit
+*
 * @method prefix_code
 * @param prefix_code {Object}
 * @return Array
@@ -366,7 +373,142 @@ Toolbox.prefix_code_to_bitarray = function Toolbox__prefix_code_to_bitarray(pref
 }
 
 /**
-* 
+* @method bitarray_to_prefix_code
+* @param bitarray {Array}
+* @return Object
+*/
+Toolbox.bitarray_to_prefix_code = function Toolbox__bitarray_to_prefix_code(bitarray)
+{
+	var prefix_code = {}
+	var key, value 
+	while(bitarray.length)
+	{
+		var charcode_bitarray = bitarray.splice(0, 16)
+		var size_bitarray = bitarray.splice(0, 8)
+		var charcode = parseInt(charcode_bitarray.join(''), 2)
+		var size = parseInt(size_bitarray.join(''), 2)
+		var code_bitarray = bitarray.splice(0, size)
+		prefix_code[charcode] = code_bitarray
+	}
+	return prefix_code
+}
+
+/**
+* @method header_object_to_bitarray
+* @param header_object {Object}
+* @return Array
+*/
+Toolbox.header_object_to_bitarray = function Toolbox__header_object_to_bitarray(header_object)
+{
+	var bitarray = []
+	var version = header_object.version & 0xFF
+	var prefix_code_bitsize = header_object.prefix_code_bitsize >>> 0
+	var content_bitsize = header_object.content_bitsize >>> 0
+
+	// Signature
+	for (var i = 0; i < SIGNATURE.length; i++) 
+	{
+		var character = SIGNATURE[i]
+		var charcode = CHARCODE_LOOKUP[character] 
+					|| (CHARCODE_LOOKUP[character] = character.charCodeAt(0))
+		console.log(charcode, byte_to_bitarray(charcode))
+		bitarray.push.apply(bitarray, byte_to_bitarray(charcode))
+	}
+
+	// Version
+	bitarray.push.apply(bitarray, byte_to_bitarray(version))
+
+	// Prefix Code size
+	bitarray.push.apply(bitarray, dword_to_bitarray(prefix_code_bitsize))
+	
+	// Content size
+	bitarray.push.apply(bitarray, dword_to_bitarray(content_bitsize))
+
+	return bitarray
+}
+
+/****/
+Toolbox.bitarray_to_header_object = function Toolbox__bitarray_to_header_object(bitarray)
+{
+	var bitarray = bitarray.slice(0)
+	var header_object = {}
+	var signature_bitarray = bitarray.splice(0, SIGNATURE.length * 8)
+	var version_bitarray = bitarray.splice(0, 8)
+	var signature = signature_bitarray.map(function (charcode) {
+		return String.fromCharCode(charcode)
+	})
+	var version = bitarray_to_byte(version_bitarray)
+
+	header_object.signature = signature
+	header_object.version = version
+
+	if (version === 0)
+	{
+		var prefix_code_size = bitarray_to_dword(bitarray.splice(0, 32))
+		var content_size = bitarray_to_dword(bitarray.splice(0, 32))
+		header_object.prefix_code_size = prefix_code_size
+		header_object.content_size = content_size
+	}
+	else
+	{
+		throw new Error('unsupported version: ' + version)
+	}
+
+	return header_object
+}
+
+/**
+* For the given length, calls the callback the amount of times each time passing
+* the callback the x and y coordinate for a in-grid, outward spiral.
+*
+* @method spiral
+* @param length {Number}
+* @param callback {Function}
+*/
+Toolbox.spiral = function Toolbox__spiral (length, callback) 
+{
+	var n = length
+	var x = 0
+	var y = 0
+	var dx = 0
+	var dy = -1 
+	var i = 0
+	while(i < n)
+	{
+		if (false === callback(x, y, i, n)) break;
+
+		// Corner Detection
+		if (x === y || (x < 0 && x === -y) || (x > 0 && x === 1 - y))
+		{
+			var tmp = dx, dx = -dy, dy = tmp
+		}
+		// Movement
+		x += dx, y += dy, i++
+	}
+}
+
+/**
+* Turns a bitarray into a 24bit bitmap uri
+*/
+Toolbox.bitmap_uri = function Toolbox__adamant_header(bitarray)
+{
+	var bitmap_uri = []
+	var header = [
+		0x42, 0x4D, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x00, 
+		0x00, 0x00, 0x1A, 0x00, 0x00, 0x00, 0x0C, 0x00, 
+		0x00, 0x00
+	]
+	var width = [0x04, 0x00]
+	var height = [0x04, 0x00]
+	var bitmap_stuff = [0x01, 0x00, 0x18, 0x00]
+	var tail_offset = [0x00, 0x00]
+
+
+
+}
+
+/**
+* Extract a Adamant header from an image.
 *
 * @method adamant_header
 * @param image_data {ImageData}
@@ -378,7 +520,7 @@ Toolbox.adamant_header = function Toolbox__adamant_header(image_data)
 }
 
 /**
-* 
+* Extract extra metadata from a Adamant image.
 *
 * @method adamant_metadata
 * @param image_data {ImageData}
@@ -431,17 +573,80 @@ function charcode_to_bitarray (charcode)
 */
 function bitsize_to_bitarray (size) 
 {
-	charcode = charcode >>> 0
+	size = size >>> 0
 	return [
-		(charcode) & (BIT_ONE << 0x7) ? BIT_ONE : BIT_ZERO,
-		(charcode) & (BIT_ONE << 0x6) ? BIT_ONE : BIT_ZERO,
-		(charcode) & (BIT_ONE << 0x5) ? BIT_ONE : BIT_ZERO,
-		(charcode) & (BIT_ONE << 0x4) ? BIT_ONE : BIT_ZERO,
-		(charcode) & (BIT_ONE << 0x3) ? BIT_ONE : BIT_ZERO,
-		(charcode) & (BIT_ONE << 0x2) ? BIT_ONE : BIT_ZERO,
-		(charcode) & (BIT_ONE << 0x1) ? BIT_ONE : BIT_ZERO,
-		(charcode) & (BIT_ONE << 0x0) ? BIT_ONE : BIT_ZERO,
+		(size) & (BIT_ONE << 0x7) ? BIT_ONE : BIT_ZERO,
+		(size) & (BIT_ONE << 0x6) ? BIT_ONE : BIT_ZERO,
+		(size) & (BIT_ONE << 0x5) ? BIT_ONE : BIT_ZERO,
+		(size) & (BIT_ONE << 0x4) ? BIT_ONE : BIT_ZERO,
+		(size) & (BIT_ONE << 0x3) ? BIT_ONE : BIT_ZERO,
+		(size) & (BIT_ONE << 0x2) ? BIT_ONE : BIT_ZERO,
+		(size) & (BIT_ONE << 0x1) ? BIT_ONE : BIT_ZERO,
+		(size) & (BIT_ONE << 0x0) ? BIT_ONE : BIT_ZERO,
 	]
+}
+
+function int32_to_bitarray (int32) 
+{
+	int32 = int32 >>> 0
+	return [
+		(int32) & (BIT_ONE << 0x1F) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x1E) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x1D) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x1C) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x1B) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x1A) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x19) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x18) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x17) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x16) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x15) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x14) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x13) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x12) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x11) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x10) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0xF) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0xE) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0xD) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0xC) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0xB) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0xA) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x9) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x8) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x7) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x6) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x5) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x4) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x3) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x2) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x1) ? BIT_ONE : BIT_ZERO,
+		(int32) & (BIT_ONE << 0x0) ? BIT_ONE : BIT_ZERO,
+	]	
+}
+
+var byte_to_bitarray = bitsize_to_bitarray
+var word_to_bitarray = charcode_to_bitarray
+var dword_to_bitarray = int32_to_bitarray
+
+function bitarray_to_number (bitarray, bitsize) 
+{
+	return parseInt(bitarray.slice(0, bitsize).join(''), 2)
+}
+
+function bitarray_to_byte (bitarray) 
+{ 
+	return bitarray_to_number(bitarray, 8)
+}
+
+function bitarray_to_word (bitarray) 
+{ 
+	return bitarray_to_number(bitarray, 16)
+}
+
+function bitarray_to_dword (bitarray) 
+{ 
+	return bitarray_to_number(bitarray, 32)
 }
 
 /**
@@ -470,7 +675,7 @@ Object.defineProperty(
 	Adamant, 
 	'onmodule', 
 	{
-		configurable: false, writable: true, enumerable: true,
+		configurable: false, enumerable: true,
 		get: function()
 		{
 			return ON_MODULE
@@ -638,6 +843,33 @@ Adamant.encode = function Adamant__encode(text)
 	var histogram = Toolbox.histogram(text)
 	var prefix_code = Toolbox.prefix_code(histogram)
 	var huffman_bits = Toolbox.huffman_bits(text, histogram, prefix_code)
+	var prefix_code_bits = Toolbox.prefix_code_to_bitarray(prefix_code)
+
+	var header_object = {
+		version: 0,
+		content_bitsize: huffman_bits.length,
+		prefix_code_bitsize: prefix_code_bits.length
+	}
+	var header_bitarray = Toolbox.header_object_to_bitarray(header_object)
+
+	console.log(histogram)
+	console.log(prefix_code)
+	console.log(huffman_bits)
+	console.log(prefix_code_bits)
+	console.log('-- HEADER --')
+	console.log(header_object)
+	console.log(header_bitarray)
+	console.log('---')
+	console.log(Toolbox.bitarray_to_prefix_code(prefix_code_bits))
+	console.log(Toolbox.bitarray_to_header_object(header_bitarray))
+
+
+	var merged_bitarray = header_bitarray.slice(0)
+	merged_bitarray.push.apply(merged_bitarray, prefix_code_bits)
+	merged_bitarray.push.apply(merged_bitarray, huffman_bits)
+
+	console.log(' --- OUT 0 --- ')
+	console.log(merged_bitarray)
 }
 
 /**
