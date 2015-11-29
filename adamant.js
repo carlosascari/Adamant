@@ -172,14 +172,6 @@ for (var i = 0; i < 0xFF; i++)
 	CHARACTER_LOOKUP[i] = character
 }
 
-/**
-* @method sort_histogram_desc
-*/
-function sort_histogram_desc(a, b)
-{
-	return b[1] - a[1]
-}
-
 // -----------------------------------------------------------------------------
 
 /**
@@ -411,7 +403,6 @@ Toolbox.header_object_to_bitarray = function Toolbox__header_object_to_bitarray(
 		var character = SIGNATURE[i]
 		var charcode = CHARCODE_LOOKUP[character] 
 					|| (CHARCODE_LOOKUP[character] = character.charCodeAt(0))
-		console.log(charcode, byte_to_bitarray(charcode))
 		bitarray.push.apply(bitarray, byte_to_bitarray(charcode))
 	}
 
@@ -490,7 +481,7 @@ Toolbox.spiral = function Toolbox__spiral (length, callback)
 /**
 * Turns a bitarray into a 24bit bitmap uri
 */
-Toolbox.bitmap_uri = function Toolbox__adamant_header(bitarray)
+Toolbox.bitmap_uri = function Toolbox__bitmap_uri(bitarray)
 {
 	var bitmap_uri = []
 	var header = [
@@ -503,8 +494,64 @@ Toolbox.bitmap_uri = function Toolbox__adamant_header(bitarray)
 	var bitmap_stuff = [0x01, 0x00, 0x18, 0x00]
 	var tail_offset = [0x00, 0x00]
 
+	var spiraled_blocks = []
+	var bitsize = bitarray.length
+	var bytesize = bitsize/8
+	var blocksize = bytesize/3
+	var n = Math.round(blocksize)
+	var magnitude = Math.round(Math.sqrt(blocksize))
+	var ox = ~~(magnitude/2) - 1
+	var oy = ~~(magnitude/2) - 1
 
+	width[0] = magnitude
+	height[0] = magnitude
 
+	Toolbox.spiral(n, function oncoordchange (x, y, index) {
+		x = ox + x 
+		y = oy + y
+		var index = (y * magnitude) + x
+		spiraled_blocks[index] = bitarray.splice(0, 24)
+	})
+
+	var rows = []
+
+	for (var y = 0; y < magnitude; y++) 
+	{
+		rows[y] = []
+		for (var x = 0; x < magnitude; x++) 
+		{
+			var index = (y * magnitude) + x
+			var blockbits = spiraled_blocks[index]
+			if (!blockbits)
+			{
+				console.log('empty index', index)
+				break
+			}
+			var value = parseInt(blockbits.join(''), 2)
+			rows[y][rows[y].length] = value & 0xFF0000 >> 16
+			rows[y][rows[y].length] = value & 0x00FF00 >> 8
+			rows[y][rows[y].length] = value & 0x0000FF 
+		}
+	}
+
+	// Build Bitmap (byte by byte)
+	bitmap_uri.push.apply(bitmap_uri, header)
+	bitmap_uri.push.apply(bitmap_uri, width)
+	bitmap_uri.push.apply(bitmap_uri, height)
+	bitmap_uri.push.apply(bitmap_uri, bitmap_stuff)
+	for (var i = 0; i < rows.length; i++) 
+	{
+		bitmap_uri.push.apply(bitmap_uri, rows[i])
+	}
+
+	// cluster fuck
+	var result = ''
+	for (var i = 0; i < bitmap_uri.length; i++)
+	{
+		result += String.fromCharCode(bitmap_uri[i] & 0xFF) 
+	}
+	var src = 'data:image/bmp;base64,' + btoa(result);
+	return src
 }
 
 /**
@@ -519,20 +566,15 @@ Toolbox.adamant_header = function Toolbox__adamant_header(image_data)
 
 }
 
-/**
-* Extract extra metadata from a Adamant image.
-*
-* @method adamant_metadata
-* @param image_data {ImageData}
-* @param [adamant_header] {Object}
-* @return Object
-*/
-Toolbox.adamant_metadata = function Toolbox__adamant_metadata(image_data, adamant_header)
-{
-
-}
-
 // -----------------------------------------------------------------------------
+
+/**
+* @method sort_histogram_desc
+*/
+function sort_histogram_desc(a, b)
+{
+	return b[1] - a[1]
+}
 
 /**
 * Converts a charcode of up to 16 bits of size, into a Array of ones and zeroes
@@ -852,24 +894,28 @@ Adamant.encode = function Adamant__encode(text)
 	}
 	var header_bitarray = Toolbox.header_object_to_bitarray(header_object)
 
-	console.log(histogram)
-	console.log(prefix_code)
-	console.log(huffman_bits)
-	console.log(prefix_code_bits)
-	console.log('-- HEADER --')
-	console.log(header_object)
-	console.log(header_bitarray)
-	console.log('---')
-	console.log(Toolbox.bitarray_to_prefix_code(prefix_code_bits))
-	console.log(Toolbox.bitarray_to_header_object(header_bitarray))
+	// console.log(histogram)
+	// console.log(prefix_code)
+	// console.log(huffman_bits)
+	// console.log(prefix_code_bits)
+	// console.log('-- HEADER --')
+	// console.log(header_object)
+	// console.log(header_bitarray)
+	// console.log('---')
+	// console.log(Toolbox.bitarray_to_prefix_code(prefix_code_bits))
+	// console.log(Toolbox.bitarray_to_header_object(header_bitarray))
 
 
 	var merged_bitarray = header_bitarray.slice(0)
 	merged_bitarray.push.apply(merged_bitarray, prefix_code_bits)
-	merged_bitarray.push.apply(merged_bitarray, huffman_bits)
+	for (var i = 0; i < huffman_bits.length; i++) {
+		merged_bitarray[merged_bitarray.length] = huffman_bits[i]
+	};
+	// merged_bitarray.push.apply(merged_bitarray, huffman_bits)
 
-	console.log(' --- OUT 0 --- ')
-	console.log(merged_bitarray)
+	// console.log(' --- OUT 0 --- ')
+	// console.log(merged_bitarray)
+	return Toolbox.bitmap_uri(merged_bitarray)
 }
 
 /**
@@ -879,7 +925,31 @@ Adamant.encode = function Adamant__encode(text)
 * @param image {HTMLImageElement|ImageData}
 * @return String
 */
-Adamant.decode = function Adamant__decode(image){}
+Adamant.decode = function Adamant__decode(image)
+{
+	var image_data = image instanceof HTMLImageElement
+		? image_element_to_image_data(image)
+		: image instanceof ImageData
+			? image
+			: null
+
+	if (!image_data)
+	{
+		throw new Error('Image must be a HTMLImageElement or ImageData instance')
+	}
+
+	var pixelview = new Uint32Array(image_data.data.buffer)
+	var magnitude = image_data.width
+	var oy = ~~(magnitude/2) - 1
+	var ox = ~~(magnitude/2) - 1
+
+	var oindex =  (magnitude * oy) + ox
+	console.log(oindex)
+	console.log(pixelview[oindex])
+	console.log(pixelview[oindex].toString(16))
+
+
+}
 
 /**
 * Initializes an Adamant encoded image
