@@ -525,6 +525,7 @@ Toolbox.bitmap_uri = function Toolbox__bitmap_uri(bitarray)
 			if (!blockbits)
 			{
 				console.log('empty index', index)
+				y = magnitude + 20
 				break
 			}
 			var value = parseInt(blockbits.join(''), 2)
@@ -544,7 +545,6 @@ Toolbox.bitmap_uri = function Toolbox__bitmap_uri(bitarray)
 		bitmap_uri.push.apply(bitmap_uri, rows[i])
 	}
 
-	// cluster fuck
 	var result = ''
 	for (var i = 0; i < bitmap_uri.length; i++)
 	{
@@ -942,13 +942,14 @@ Adamant.decode = function Adamant__decode(image)
 	var magnitude = image_data.width
 	var oy = ~~(magnitude/2) - 1
 	var ox = ~~(magnitude/2) - 1
-
 	var oindex =  (magnitude * oy) + ox
+	var pixel = pixelview[oindex]
+	var red = pixel & 0x000000FF
+	var blue = (pixel & 0x0000FF00) >> 8
+	var green = (pixel & 0x00FF0000) >> 16
 	console.log(oindex)
 	console.log(pixelview[oindex])
-	console.log(pixelview[oindex].toString(16))
-
-
+	console.log(String.fromCharCode(red), String.fromCharCode(blue), String.fromCharCode(green))
 }
 
 /**
