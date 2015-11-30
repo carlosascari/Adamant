@@ -3,13 +3,13 @@
 *
 * @module Adamant
 */
-var Adamant = (function () {
+var Adamant = (function (instance) {
 
 /**
 * @class Adamant
 * @constructor
 */
-var Adamant = new (function Adamant(){})
+var Adamant = instance = new (function Adamant(){if (instance) return instance})
 
 /**
 * @class Toolbox
@@ -321,6 +321,115 @@ Toolbox.huffman_bits = function Toolbox__huffman_code (text, histogram, prefix_c
 }
 
 /**
+* For the given length, calls the callback the amount of times each time passing
+* the callback the x and y coordinate for a in-grid, outward spiral.
+*
+* @method spiral
+* @param length {Number}
+* @param callback {Function}
+*/
+Toolbox.spiral = function Toolbox__spiral (length, callback) 
+{
+	var n = length >>> 0
+	if (!n) throw new Error('length should be a positive integer')
+
+	var x = 0
+	var y = 0
+	var dx = 0
+	var dy = -1 
+	var i = 0
+	while(i < n)
+	{
+		if (false === callback(x, y, i, n)) break;
+
+		// Corner Detection
+		if (x === y || (x < 0 && x === -y) || (x > 0 && x === 1 - y))
+		{
+			var tmp = dx, dx = -dy, dy = tmp
+		}
+		// Movement
+		x += dx, y += dy, i++
+	}
+}
+
+/**
+* Turns a bitarray into a 24bit bitmap uri
+*/
+Toolbox.bitmap_uri = function Toolbox__bitmap_uri(bitarray)
+{
+	bitarray = bitarray.slice(0)
+	var bitmap_uri = []
+	var header = [
+		0x42, 0x4D, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x00, 
+		0x00, 0x00, 0x1A, 0x00, 0x00, 0x00, 0x0C, 0x00, 
+		0x00, 0x00
+	]
+	var width = [0x04, 0x00]
+	var height = [0x04, 0x00]
+	var bitmap_stuff = [0x01, 0x00, 0x18, 0x00]
+	var tail_offset = [0x00, 0x00]
+
+	var spiraled_blocks = []
+	var bitsize = bitarray.length
+	var bytesize = bitsize/8
+	var blocksize = bytesize/3
+	var n = Math.round(blocksize)
+	var magnitude = Math.round(Math.sqrt(blocksize))
+	var ox = ~~(magnitude/2) - 1
+	var oy = ~~(magnitude/2) - 1
+
+	width[0] = magnitude
+	height[0] = magnitude
+
+	Toolbox.spiral(n, function oncoordchange (x, y, index) {
+		x = ox + x 
+		y = oy + y
+		var index = (y * magnitude) + x
+		spiraled_blocks[index] = bitarray.splice(0, 24)
+	})
+
+	var rows = []
+
+	for (var y = 0; y < magnitude; y++) 
+	{
+		rows[y] = []
+		for (var x = 0; x < magnitude; x++) 
+		{
+			var index = (y * magnitude) + x
+			var blockbits = spiraled_blocks[index]
+			if (!blockbits)
+			{
+				console.log('empty index', index)
+				y = magnitude + 20
+				break
+			}
+			var value = parseInt(blockbits.join(''), 2)
+			rows[y][rows[y].length] = value & 0xFF0000 >> 16
+			rows[y][rows[y].length] = value & 0x00FF00 >> 8
+			rows[y][rows[y].length] = value & 0x0000FF 
+		}
+	}
+
+	// Build Bitmap (byte by byte)
+	bitmap_uri.push.apply(bitmap_uri, header)
+	bitmap_uri.push.apply(bitmap_uri, width)
+	bitmap_uri.push.apply(bitmap_uri, height)
+	bitmap_uri.push.apply(bitmap_uri, bitmap_stuff)
+	for (var i = 0; i < rows.length; i++) 
+	{
+		bitmap_uri.push.apply(bitmap_uri, rows[i])
+	}
+
+	var result = ''
+	for (var i = 0; i < bitmap_uri.length; i++)
+	{
+		result += String.fromCharCode(bitmap_uri[i] & 0xFF) 
+	}
+	var src = 'data:image/bmp;base64,' + btoa(result);
+	return src
+}
+
+/**
 * Removes c-style comments from a given string.
 *
 * @method remove_comments
@@ -334,6 +443,8 @@ Toolbox.remove_comments = function Toolbox__remove_comments(text)
 		''
 	)
 }
+
+// -----------------------------------------------------------------------------
 
 /**
 * Converts a prefix_code object to a Array of bits with Adamants structure rules
@@ -446,124 +557,6 @@ Toolbox.bitarray_to_header_object = function Toolbox__bitarray_to_header_object(
 	}
 
 	return header_object
-}
-
-/**
-* For the given length, calls the callback the amount of times each time passing
-* the callback the x and y coordinate for a in-grid, outward spiral.
-*
-* @method spiral
-* @param length {Number}
-* @param callback {Function}
-*/
-Toolbox.spiral = function Toolbox__spiral (length, callback) 
-{
-	var n = length
-	var x = 0
-	var y = 0
-	var dx = 0
-	var dy = -1 
-	var i = 0
-	while(i < n)
-	{
-		if (false === callback(x, y, i, n)) break;
-
-		// Corner Detection
-		if (x === y || (x < 0 && x === -y) || (x > 0 && x === 1 - y))
-		{
-			var tmp = dx, dx = -dy, dy = tmp
-		}
-		// Movement
-		x += dx, y += dy, i++
-	}
-}
-
-/**
-* Turns a bitarray into a 24bit bitmap uri
-*/
-Toolbox.bitmap_uri = function Toolbox__bitmap_uri(bitarray)
-{
-	var bitmap_uri = []
-	var header = [
-		0x42, 0x4D, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x00, 
-		0x00, 0x00, 0x1A, 0x00, 0x00, 0x00, 0x0C, 0x00, 
-		0x00, 0x00
-	]
-	var width = [0x04, 0x00]
-	var height = [0x04, 0x00]
-	var bitmap_stuff = [0x01, 0x00, 0x18, 0x00]
-	var tail_offset = [0x00, 0x00]
-
-	var spiraled_blocks = []
-	var bitsize = bitarray.length
-	var bytesize = bitsize/8
-	var blocksize = bytesize/3
-	var n = Math.round(blocksize)
-	var magnitude = Math.round(Math.sqrt(blocksize))
-	var ox = ~~(magnitude/2) - 1
-	var oy = ~~(magnitude/2) - 1
-
-	width[0] = magnitude
-	height[0] = magnitude
-
-	Toolbox.spiral(n, function oncoordchange (x, y, index) {
-		x = ox + x 
-		y = oy + y
-		var index = (y * magnitude) + x
-		spiraled_blocks[index] = bitarray.splice(0, 24)
-	})
-
-	var rows = []
-
-	for (var y = 0; y < magnitude; y++) 
-	{
-		rows[y] = []
-		for (var x = 0; x < magnitude; x++) 
-		{
-			var index = (y * magnitude) + x
-			var blockbits = spiraled_blocks[index]
-			if (!blockbits)
-			{
-				console.log('empty index', index)
-				y = magnitude + 20
-				break
-			}
-			var value = parseInt(blockbits.join(''), 2)
-			rows[y][rows[y].length] = value & 0xFF0000 >> 16
-			rows[y][rows[y].length] = value & 0x00FF00 >> 8
-			rows[y][rows[y].length] = value & 0x0000FF 
-		}
-	}
-
-	// Build Bitmap (byte by byte)
-	bitmap_uri.push.apply(bitmap_uri, header)
-	bitmap_uri.push.apply(bitmap_uri, width)
-	bitmap_uri.push.apply(bitmap_uri, height)
-	bitmap_uri.push.apply(bitmap_uri, bitmap_stuff)
-	for (var i = 0; i < rows.length; i++) 
-	{
-		bitmap_uri.push.apply(bitmap_uri, rows[i])
-	}
-
-	var result = ''
-	for (var i = 0; i < bitmap_uri.length; i++)
-	{
-		result += String.fromCharCode(bitmap_uri[i] & 0xFF) 
-	}
-	var src = 'data:image/bmp;base64,' + btoa(result);
-	return src
-}
-
-/**
-* Extract a Adamant header from an image.
-*
-* @method adamant_header
-* @param image_data {ImageData}
-* @return Object
-*/
-Toolbox.adamant_header = function Toolbox__adamant_header(image_data)
-{
-
 }
 
 // -----------------------------------------------------------------------------
@@ -704,7 +697,7 @@ function image_element_to_image_data (image_element)
 	return image_data
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
 * Event Handler called everytime a new Adamant image is decoded
@@ -737,6 +730,97 @@ Object.defineProperty(
 )
 
 // -----------------------------------------------------------------------------
+
+/**
+* Encodes a string into a 24bit bitmap image in a data URI digest.
+*
+* @example
+*
+*	// Sample JS string
+* 	var JS_FILE_CONTENTS = 'console.log("executable images ftw!")'
+*
+*	// Create, show and execute Adamant image
+*	var image_element = document.createElement('img')
+*	image_element.onload = Adamant.init
+*	document.body.appendChild(image_element)
+*	image_element.src = Adamant.encode(JS_FILE_CONTENTS)
+*
+* @method encode
+* @param text {String}
+* @return String
+*/
+Adamant.encode = function Adamant__encode(text)
+{
+	var histogram = Toolbox.histogram(text)
+	var prefix_code = Toolbox.prefix_code(histogram)
+	var huffman_bits = Toolbox.huffman_bits(text, histogram, prefix_code)
+	var prefix_code_bits = Toolbox.prefix_code_to_bitarray(prefix_code)
+	var header_object = {
+		version: 0,
+		content_bitsize: huffman_bits.length,
+		prefix_code_bitsize: prefix_code_bits.length
+	}
+	var header_bitarray = Toolbox.header_object_to_bitarray(header_object)
+
+
+
+
+	console.log(histogram)
+	// console.log(prefix_code)
+	// console.log(huffman_bits)
+	// console.log(prefix_code_bits)
+	// console.log('-- HEADER --')
+	// console.log(header_object)
+	// console.log(header_bitarray)
+	// console.log('---')
+	// console.log(Toolbox.bitarray_to_prefix_code(prefix_code_bits))
+	// console.log(Toolbox.bitarray_to_header_object(header_bitarray))
+
+	var merged_bitarray = header_bitarray.slice(0)
+	merged_bitarray.push.apply(merged_bitarray, prefix_code_bits)
+	for (var i = 0; i < huffman_bits.length; i++) {
+		merged_bitarray[merged_bitarray.length] = huffman_bits[i]
+	};
+	// merged_bitarray.push.apply(merged_bitarray, huffman_bits)
+
+	// console.log(' --- OUT 0 --- ')
+	// console.log(merged_bitarray)
+	return Toolbox.bitmap_uri(merged_bitarray)
+}
+
+/**
+* Decodes a Adamant encoded image back to its original string.
+*
+* @method decode
+* @param image {HTMLImageElement|ImageData}
+* @return String
+*/
+Adamant.decode = function Adamant__decode(image)
+{
+	var image_data = image instanceof HTMLImageElement
+		? image_element_to_image_data(image)
+		: image instanceof ImageData
+			? image
+			: null
+
+	if (!image_data)
+	{
+		throw new Error('Image must be a HTMLImageElement or ImageData instance')
+	}
+
+	var pixelview = new Uint32Array(image_data.data.buffer)
+	var magnitude = image_data.width
+	var oy = ~~(magnitude/2) - 1
+	var ox = ~~(magnitude/2) - 1
+	var oindex =  (magnitude * oy) + ox
+	var pixel = pixelview[oindex]
+	var red = pixel & 0x000000FF
+	var blue = (pixel & 0x0000FF00) >> 8
+	var green = (pixel & 0x00FF0000) >> 16
+	console.log(oindex)
+	console.log(pixelview[oindex])
+	console.log(String.fromCharCode(red), String.fromCharCode(blue), String.fromCharCode(green))
+}
 
 /**
 * Watches a page for new images that are inserted into the DOM. The `Adamant Signature`
@@ -863,96 +947,6 @@ Adamant.unwatch = function Adamant__unwatch()
 }
 
 /**
-* Encodes a string into a 24bit bitmap image in a data URI digest.
-*
-* @example
-*
-*	// Sample JS string
-* 	var JS_FILE_CONTENTS = 'console.log("executable images ftw!")'
-*
-*	// Create, show and execute Adamant image
-*	var image_element = document.createElement('img')
-*	image_element.onload = Adamant.init
-*	document.body.appendChild(image_element)
-*	image_element.src = Adamant.encode(JS_FILE_CONTENTS)
-*
-* @method encode
-* @param text {String}
-* @return String
-*/
-Adamant.encode = function Adamant__encode(text)
-{
-	var histogram = Toolbox.histogram(text)
-	var prefix_code = Toolbox.prefix_code(histogram)
-	var huffman_bits = Toolbox.huffman_bits(text, histogram, prefix_code)
-	var prefix_code_bits = Toolbox.prefix_code_to_bitarray(prefix_code)
-
-	var header_object = {
-		version: 0,
-		content_bitsize: huffman_bits.length,
-		prefix_code_bitsize: prefix_code_bits.length
-	}
-	var header_bitarray = Toolbox.header_object_to_bitarray(header_object)
-
-	// console.log(histogram)
-	// console.log(prefix_code)
-	// console.log(huffman_bits)
-	// console.log(prefix_code_bits)
-	// console.log('-- HEADER --')
-	// console.log(header_object)
-	// console.log(header_bitarray)
-	// console.log('---')
-	// console.log(Toolbox.bitarray_to_prefix_code(prefix_code_bits))
-	// console.log(Toolbox.bitarray_to_header_object(header_bitarray))
-
-
-	var merged_bitarray = header_bitarray.slice(0)
-	merged_bitarray.push.apply(merged_bitarray, prefix_code_bits)
-	for (var i = 0; i < huffman_bits.length; i++) {
-		merged_bitarray[merged_bitarray.length] = huffman_bits[i]
-	};
-	// merged_bitarray.push.apply(merged_bitarray, huffman_bits)
-
-	// console.log(' --- OUT 0 --- ')
-	// console.log(merged_bitarray)
-	return Toolbox.bitmap_uri(merged_bitarray)
-}
-
-/**
-* Decodes a Adamant encoded image back to its original string.
-*
-* @method decode
-* @param image {HTMLImageElement|ImageData}
-* @return String
-*/
-Adamant.decode = function Adamant__decode(image)
-{
-	var image_data = image instanceof HTMLImageElement
-		? image_element_to_image_data(image)
-		: image instanceof ImageData
-			? image
-			: null
-
-	if (!image_data)
-	{
-		throw new Error('Image must be a HTMLImageElement or ImageData instance')
-	}
-
-	var pixelview = new Uint32Array(image_data.data.buffer)
-	var magnitude = image_data.width
-	var oy = ~~(magnitude/2) - 1
-	var ox = ~~(magnitude/2) - 1
-	var oindex =  (magnitude * oy) + ox
-	var pixel = pixelview[oindex]
-	var red = pixel & 0x000000FF
-	var blue = (pixel & 0x0000FF00) >> 8
-	var green = (pixel & 0x00FF0000) >> 16
-	console.log(oindex)
-	console.log(pixelview[oindex])
-	console.log(String.fromCharCode(red), String.fromCharCode(blue), String.fromCharCode(green))
-}
-
-/**
 * Initializes an Adamant encoded image
 *
 * This method can be used as an image `onload` event handler so it is executed
@@ -984,5 +978,5 @@ Adamant.init = function Adamant__init(image)
 	var module = new AdamantModule(js_string)
 }
 
-return Adamant
-})()
+return Object.freeze(Adamant)
+})(null)

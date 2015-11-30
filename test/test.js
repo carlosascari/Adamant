@@ -4,10 +4,10 @@ function main(sample)
 {
 	var textarea = document.getElementById('text')
 	var image = document.getElementById('image')
-	var dataURL = Adamant.encode(sample)
-	image.src = dataURL
+	
+	image.src = Adamant.encode(sample)
 	image.onload = function onimageload() {
-		textarea.style.minHeight = image.height - 10 + 'px'
+		textarea.style.minHeight = (image.height - 8) + 'px'
 		textarea.value = Adamant.decode(this)
 	}
 }
