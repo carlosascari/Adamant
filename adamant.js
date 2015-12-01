@@ -107,12 +107,25 @@ const BIT_ZERO = 0x0
 const BIT_ONE = 0x1
 
 /**
-* Event handler called everytime a new Adamant image is decoded.
+* In JS endianness is that of the underlying hardware, so we'll detect it now.
 *
-* @property ON_MODULE
-* @type Function
+* Little Endian  	BE
+* Big Endian 		LE
+*
+* @property ENDIANNESS
+* @type String
+* @final
 */
-var ON_MODULE = function onmodule_default(){}
+const ENDIANNESS = (function find_endianness () {
+	var b = new ArrayBuffer(4)
+	var a = new Uint32Array(b)
+	var c = new Uint8Array(b)
+	a[0] = 0xDEADBEEF
+	if (c[0] == 0xDE) return 'BE'
+	if (c[0] == 0xEF) return 'LE'
+	console.warn('ENDIANNESS could not be determined, assuming Little Endian')
+	return 'LE'
+})()
 
 /**
 * Whether to automatically execute a decoded Adamant image when **watch** is 
@@ -134,6 +147,14 @@ var WATCH_PROCESSOR = function watch_processor (module, image_element)
 {
 	if (AUTO_EXECUTE) module.init.apply(module, image_element)
 }
+
+/**
+* Event handler called everytime a new Adamant image is decoded.
+*
+* @property ON_MODULE
+* @type Function
+*/
+var ON_MODULE = function onmodule_default(){}
 
 /**
 * @property CANVAS
@@ -170,6 +191,15 @@ for (var i = 0; i < 0xFF; i++)
 	var character = String.fromCharCode(i)
 	CHARCODE_LOOKUP[character] = i
 	CHARACTER_LOOKUP[i] = character
+}
+
+/**
+* @method sort_histogram_desc
+* @private
+*/
+function sort_histogram_desc(a, b)
+{
+	return b[1] - a[1]
 }
 
 // -----------------------------------------------------------------------------
@@ -353,7 +383,11 @@ Toolbox.spiral = function Toolbox__spiral (length, callback)
 }
 
 /**
-* Turns a bitarray into a 24bit bitmap uri
+* Turns a bitarray into a 24bit bitmap URI
+*
+* @method bitmap_uri
+* @param bitarray {Array}
+* @return String
 */
 Toolbox.bitmap_uri = function Toolbox__bitmap_uri(bitarray)
 {
@@ -468,14 +502,16 @@ Toolbox.prefix_code_to_bitarray = function Toolbox__prefix_code_to_bitarray(pref
 	{
 		var charcode = charcodes[i]
 		var huffman_bits = prefix_code[charcode]
-		bitarray.push.apply(bitarray, charcode_to_bitarray(charcode))
-		bitarray.push.apply(bitarray, bitsize_to_bitarray(huffman_bits.length))
+		bitarray.push.apply(bitarray, Toolbox.charcode_to_bitarray(charcode))
+		bitarray.push.apply(bitarray, Toolbox.bitsize_to_bitarray(huffman_bits.length))
 		bitarray.push.apply(bitarray, huffman_bits)
 	}
 	return bitarray
 }
 
 /**
+* Covnerts a bitarray into a prefix_code object
+*
 * @method bitarray_to_prefix_code
 * @param bitarray {Array}
 * @return Object
@@ -497,6 +533,8 @@ Toolbox.bitarray_to_prefix_code = function Toolbox__bitarray_to_prefix_code(bita
 }
 
 /**
+* Convert a Adamant Header object into a bitarray
+*
 * @method header_object_to_bitarray
 * @param header_object {Object}
 * @return Array
@@ -529,7 +567,11 @@ Toolbox.header_object_to_bitarray = function Toolbox__header_object_to_bitarray(
 	return bitarray
 }
 
-/****/
+/**
+* Convert a bitarray into a Adamant Header object
+* @method bitarray_to_header_object
+* @return Array
+*/
 Toolbox.bitarray_to_header_object = function Toolbox__bitarray_to_header_object(bitarray)
 {
 	var bitarray = bitarray.slice(0)
@@ -539,17 +581,17 @@ Toolbox.bitarray_to_header_object = function Toolbox__bitarray_to_header_object(
 	var signature = signature_bitarray.map(function (charcode) {
 		return String.fromCharCode(charcode)
 	})
-	var version = bitarray_to_byte(version_bitarray)
+	var version = Toolbox.bitarray_to_byte(version_bitarray)
 
-	header_object.signature = signature
+	// header_object.signature = signature
 	header_object.version = version
 
 	if (version === 0)
 	{
-		var prefix_code_size = bitarray_to_dword(bitarray.splice(0, 32))
-		var content_size = bitarray_to_dword(bitarray.splice(0, 32))
-		header_object.prefix_code_size = prefix_code_size
-		header_object.content_size = content_size
+		var prefix_code_size = Toolbox.bitarray_to_dword(bitarray.splice(0, 32))
+		var content_size = Toolbox.bitarray_to_dword(bitarray.splice(0, 32))
+		header_object.prefix_code_bitsize = prefix_code_size
+		header_object.content_bitsize = content_size
 	}
 	else
 	{
@@ -562,21 +604,13 @@ Toolbox.bitarray_to_header_object = function Toolbox__bitarray_to_header_object(
 // -----------------------------------------------------------------------------
 
 /**
-* @method sort_histogram_desc
-*/
-function sort_histogram_desc(a, b)
-{
-	return b[1] - a[1]
-}
-
-/**
 * Converts a charcode of up to 16 bits of size, into a Array of ones and zeroes
 *
 * @method charcode_to_bitarray
 * @param charcode {Number}
 * @return Array
 */
-function charcode_to_bitarray (charcode) 
+Toolbox.charcode_to_bitarray = function Toolbox__charcode_to_bitarray (charcode) 
 {
 	charcode = charcode >>> 0
 	return [
@@ -600,13 +634,13 @@ function charcode_to_bitarray (charcode)
 }
 
 /**
-* Converts a size of up to 255, into an Array of ones and zeroes
+* Converts a size of up to 255, into an Array of ones and zeroes (8 bits)
 *
 * @method bitsize_to_bitarray
 * @param size {Number}
 * @return Array
 */
-function bitsize_to_bitarray (size) 
+Toolbox.bitsize_to_bitarray = function Toolbox__bitsize_to_bitarray (size) 
 {
 	size = size >>> 0
 	return [
@@ -621,7 +655,14 @@ function bitsize_to_bitarray (size)
 	]
 }
 
-function int32_to_bitarray (int32) 
+/**
+* Converts a 32bit Number to a bitarray
+*
+* @method int32_to_bitarray
+* @param int32 {Number}
+* @return Array
+*/
+Toolbox.int32_to_bitarray = function Toolbox__int32_to_bitarray (int32) 
 {
 	int32 = int32 >>> 0
 	return [
@@ -660,28 +701,53 @@ function int32_to_bitarray (int32)
 	]	
 }
 
-var byte_to_bitarray = bitsize_to_bitarray
-var word_to_bitarray = charcode_to_bitarray
-var dword_to_bitarray = int32_to_bitarray
-
-function bitarray_to_number (bitarray, bitsize) 
+/**
+* Converts a bitarray of any length a number
+*
+* @method bitarray_to_number
+* @param bitarray {Array}
+* @param bitsize {Number}
+* @return Number
+*/
+Toolbox.bitarray_to_number = function Toolbox___bitarray_to_number (bitarray, bitsize) 
 {
-	return parseInt(bitarray.slice(0, bitsize).join(''), 2)
+	return parseInt(bitarray.slice(0, bitsize || 32).join(''), 2)
 }
 
-function bitarray_to_byte (bitarray) 
+/**
+* Converts a bitarray of length 8 into a number
+*
+* @method bitarray_to_byte
+* @param bitarray {Array}
+* @return Number
+*/
+Toolbox.bitarray_to_byte = function Toolbox___bitarray_to_byte (bitarray) 
 { 
-	return bitarray_to_number(bitarray, 8)
+	return Toolbox.bitarray_to_number(bitarray, 8)
 }
 
-function bitarray_to_word (bitarray) 
+/**
+* Converts a bitarray of length 16 into a number
+*
+* @method bitarray_to_word
+* @param bitarray {Array}
+* @return Number
+*/
+Toolbox.bitarray_to_word = function Toolbox___bitarray_to_word (bitarray) 
 { 
-	return bitarray_to_number(bitarray, 16)
+	return Toolbox.bitarray_to_number(bitarray, 16)
 }
 
-function bitarray_to_dword (bitarray) 
+/**
+* Converts a bitarray of length 32 into a number
+*
+* @method bitarray_to_dword
+* @param bitarray {Array}
+* @return Number
+*/
+Toolbox.bitarray_to_dword = function Toolbox___bitarray_to_dword (bitarray) 
 { 
-	return bitarray_to_number(bitarray, 32)
+	return Toolbox.bitarray_to_number(bitarray, 32)
 }
 
 /**
@@ -689,13 +755,18 @@ function bitarray_to_dword (bitarray)
 * @param image_element {HTMLImageElement}
 * @return ImageData
 */
-function image_element_to_image_data (image_element) 
+Toolbox.image_element_to_image_data = function Toolbox__image_element_to_image_data (image_element) 
 {
 	CANVAS.width = image_element.width, CANVAS.height = image_element.height
 	CONTEXT.drawImage(image_element, 0, 0)
 	var image_data = CONTEXT.getImageData(0,0, image_element.width, image_element.height)
 	return image_data
 }
+
+// Private Alias
+var byte_to_bitarray = Toolbox.bitsize_to_bitarray
+var word_to_bitarray = Toolbox.charcode_to_bitarray
+var dword_to_bitarray = Toolbox.int32_to_bitarray
 
 // =============================================================================
 
@@ -798,7 +869,7 @@ Adamant.encode = function Adamant__encode(text)
 Adamant.decode = function Adamant__decode(image)
 {
 	var image_data = image instanceof HTMLImageElement
-		? image_element_to_image_data(image)
+		? Toolbox.image_element_to_image_data(image)
 		: image instanceof ImageData
 			? image
 			: null
@@ -894,7 +965,7 @@ Adamant.watch = function Adamant__watch (option)
 
 	function is_adamant_image (image_element) 
 	{
-		// var image_data = image_element_to_image_data(image_element)
+		// var image_data = Toolbox.image_element_to_image_data(image_element)
 		return false
 	}
 
@@ -962,9 +1033,9 @@ Adamant.unwatch = function Adamant__unwatch()
 Adamant.init = function Adamant__init(image)
 {
 	var image_data = this instanceof HTMLImageElement
-	? image_element_to_image_data(this)
+	? Toolbox.image_element_to_image_data(this)
 	: image instanceof HTMLImageElement
-		? image_element_to_image_data(image)
+		? Toolbox.image_element_to_image_data(image)
 		: image instanceof ImageData
 			? image
 			: null
