@@ -169,20 +169,37 @@ test('Toolbox#spiral', function () {
 	})
 })
 
-test('Toolbox#bitmap_uri', function () {
+test('Toolbox#bitmap_uri', function (done) {
 	assert(typeof Adamant.toolbox.bitmap_uri === 'function')
     
-    var SAMPLE = ['11000000', '00000011'].join('').split('').map(function (v) {return v >>> 0})
+    var SAMPLE = []
+    SAMPLE.push.apply(SAMPLE, Adamant.toolbox.charcode_to_bitarray('H'.charCodeAt(0)))
+    SAMPLE.push.apply(SAMPLE, Adamant.toolbox.charcode_to_bitarray('E'.charCodeAt(0)))
+    SAMPLE.push.apply(SAMPLE, Adamant.toolbox.charcode_to_bitarray('L'.charCodeAt(0)))
+    SAMPLE.push.apply(SAMPLE, Adamant.toolbox.charcode_to_bitarray('L'.charCodeAt(0)))
+    SAMPLE.push.apply(SAMPLE, Adamant.toolbox.charcode_to_bitarray('O'.charCodeAt(0)))
 
     var RESULT = Adamant.toolbox.bitmap_uri(SAMPLE)
 
     assert(RESULT && typeof RESULT === 'string')
     assert(RESULT.indexOf('data:image/bmp;base64,') === 0)
 
-    var JUST_BASE64 = RESULT.substr('data:image/bmp;base64,'.length)
-    var base64Decoded = atob(JUST_BASE64)
+    var image = document.createElement('img')
+    image.src = RESULT
+    image.onerror = function () {
+    	throw new Error('invalid image was generated')
+    }
+    image.onload = function () {
+    	console.log(this)
+    	document.body.appendChild(this)
+    	done()
+    }
 
-    throw new Error('not finished')
+    var JUST_BASE64 = RESULT.substr('data:image/bmp;base64,'.length)
+    var BASE64_DECODED = atob(JUST_BASE64)
+    console.log(SAMPLE)
+    console.log(JUST_BASE64)
+    console.log(BASE64_DECODED)
 })
 
 test('Toolbox#remove_comments', function () {

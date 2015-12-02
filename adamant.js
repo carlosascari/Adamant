@@ -383,7 +383,7 @@ Toolbox.spiral = function Toolbox__spiral (length, callback)
 }
 
 /**
-* Turns a bitarray into a 24bit bitmap URI
+* Turns a bitarray into a 32bit bitmap URI
 *
 * @method bitmap_uri
 * @param bitarray {Array}
@@ -391,8 +391,93 @@ Toolbox.spiral = function Toolbox__spiral (length, callback)
 */
 Toolbox.bitmap_uri = function Toolbox__bitmap_uri(bitarray)
 {
-	bitarray = bitarray.slice(0)
-	var bitmap_uri = []
+	bitmap_data_bitarray = bitarray.slice(0)
+	var magnitude = Math.ceil(Math.sqrt((bitmap_data_bitarray.length/8)/4))
+	var row_size = magnitude
+	var col_size = magnitude
+	var bitmap_bytes = []
+	/*
+	* Windows v3 BMP (Little Endian)
+	*
+	* # File Header
+	* ['B']['M'] 			Signature
+	* [0x0][0x0][0x0][0x0] 	Size of the bmp in bytes
+	* [0x0][0x0] 			Reserved for Application
+	* [0x0][0x0] 			Reserved for Application
+	* [0x0][0x0][0x0][0x0] 	Start Address/Offset to bitmap data
+	* 
+	* # DIB Header version 3
+	* [0x0][0x0][0x0][0x0] 	Size of this header (40 bytes)
+	* [0x0][0x0][0x0][0x0] 	Width in Pixels
+	* [0x0][0x0][0x0][0x0] 	Height in Pixels
+	* [0x0][0x0]		 	Number of color planes. MUST be 1.
+	* [0x0][0x0]		 	Color Deph for each Pixel e.g 1, 2, 4, 8, 16, 24, 32
+	* [0x0][0x0][0x0][0x0] 	Compression Method being used...
+	* [0x0][0x0][0x0][0x0] 	Raw bitmap data size (NOT filesize)
+	* [0x0][0x0][0x0][0x0] 	Horizontal resolution (pixels per meter)
+	* [0x0][0x0][0x0][0x0] 	Vertical resolution (pixels per meter)
+	* [0x0][0x0][0x0][0x0] 	Number of colors in color palette. CAN be zero.
+	* [0x0][0x0][0x0][0x0] 	Important colors used. Ignore.
+	*
+	* # Compression Field Values
+	* 0x0 BI_RGB 			No compression
+	* 0x1 BI_RLE8			Only in 8bit/pixel bitmaps
+	* 0x2 BI_RLE4			Only in 4bit/pixel bitmaps
+	* 0x3 BI_BITFIELDS		Only in 16bit & 32bit per pixel bitmaps
+	* 0x4 BI_JPEG			Bitmap contains JPG
+	* 0x5 BI_PNG			Bitmap contains PNG
+	*/
+
+	// Header
+	bitmap_bytes.push(0x42, 0x4D) 				// [const] "BM" Signature
+	bitmap_bytes.push(0x00, 0x00, 0x00, 0x00)	// Filesize in bytes
+	bitmap_bytes.push(0x00, 0x00, 0x00, 0x00)	// Reserved
+	bitmap_bytes.push(0x36, 0x00, 0x00, 0x00) 	// [const] Offset to Pixel Data bytes
+	
+	// DIB
+	bitmap_bytes.push(0x28, 0x00, 0x00, 0x00) 	// [const] Size of this header
+	bitmap_bytes.push(0x02, 0x00, 0x00, 0x00) 	// Width
+	bitmap_bytes.push(0x02, 0x00, 0x00, 0x00) 	// Height
+	bitmap_bytes.push(0x01, 0x00) 				// [const] Number of planes. Must be one.
+	bitmap_bytes.push(0x20, 0x00)				// [const] Bits per pixel (Using 32bits)
+	bitmap_bytes.push(0x00, 0x00, 0x00, 0x00) 	// [const] No Compression used.
+	bitmap_bytes.push(0x00, 0x00, 0x00, 0x00) 	// Size of BMP data in bytes (after this header)
+	bitmap_bytes.push(0x13, 0x0B, 0x00, 0x00) 	// Horizontal Resultion of image
+	bitmap_bytes.push(0x13, 0x0B, 0x00, 0x00) 	// Vertical Resultion of image (2835 pixels/m)
+	bitmap_bytes.push(0x00, 0x00, 0x00, 0x00)	// [const] Colors in pallete (zero, there is no pallete)
+	bitmap_bytes.push(0x00, 0x00, 0x00, 0x00)	// [const] All colors are important.
+
+	// Bitmap Data From lower left cornor up, each row is from left to right
+	for (var row = row_size - 1; row >= 0; row--)
+	{
+		for (var column = 0; column < col_size; column++) 
+		{
+			var bitsB = bitmap_data_bitarray.splice(0, 8)
+			var bitsG = bitmap_data_bitarray.splice(0, 8)
+			var bitsR = bitmap_data_bitarray.splice(0, 8)
+			var bitsA = bitmap_data_bitarray.splice(0, 8)
+			var byteB = parseInt(bitsB.join(''), 2) >>> 0
+			var byteG = parseInt(bitsG.join(''), 2) >>> 0
+			var byteR = parseInt(bitsR.join(''), 2) >>> 0
+			var byteA = parseInt(bitsA.join(''), 2) >>> 0
+			var pixel32 = (byteB << 24) | byteG << 16 | byteR  << 8 | byteA
+			bitmap_bytes.push(byteB, byteG, byteR, byteA)
+			console.log(row, column, pixel32) // BGRA32
+		}
+	}
+
+	var result = ''
+	for (var i = 0; i < bitmap_bytes.length; i++)
+	{
+		result += String.fromCharCode(bitmap_bytes[i]&0xFF) 
+	}
+	var src = 'data:image/bmp;base64,' + btoa(result);
+	return src
+
+	return 
+
+
+
 	var header = [
 		0x42, 0x4D, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x00, 
 		0x00, 0x00, 0x1A, 0x00, 0x00, 0x00, 0x0C, 0x00, 
